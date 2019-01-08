@@ -137,8 +137,8 @@ def vapp_vm_nic_argument_spec():
         vdc=dict(type='str', required=True),
         nic_id=dict(type='int', required=False),
         nic_ids=dict(type='list', required=False),
-        ip_allocation_mode=dict(type='str', required=False, default='DHCP'),
-        ip_address=dict(type='str', required=False, default=''),
+        ip_allocation_mode=dict(type='str', required=False),
+        ip_address=dict(type='str', required=False),
         network=dict(type='str', required=False),
         state=dict(choices=VAPP_VM_NIC_STATES, required=False),
         operation=dict(choices=VAPP_VM_NIC_OPERATIONS, required=False),
@@ -154,8 +154,7 @@ class VappVMNIC(VcdAnsibleModule):
     def manage_states(self):
         state = self.params.get('state')
         if state == "present":
-            #return self.add_nic()
-            return self.add_update_nic()
+            return self.add_nic()
 
         if state == "absent":
             return self.delete_nic()
@@ -163,11 +162,7 @@ class VappVMNIC(VcdAnsibleModule):
     def manage_operations(self):
         operation = self.params.get('operation')
         if operation == "update":
-            network = self.params.get('network')
-            if network:
-                return self.add_update_nic("update")
-            else:
-                return self.update_nic()
+            return self.update_nic()
 
         if operation == "read":
             return self.read_nics()
@@ -189,17 +184,14 @@ class VappVMNIC(VcdAnsibleModule):
 
     def get_vm_nics(self):
         vm = self.get_vm()
+
         return self.client.get_resource(vm.resource.get('href') + '/networkConnectionSection')
 
-    def add_update_nic(self, op = "add"):
+    def add_nic(self):
         '''
-            Used to add a nic (default)
-            or to modify an existing one (op = "update") if network change is needed
-            
             Error - More than 10 Nics are not permissible in vCD
         '''
         vm = self.get_vm()
-        vm_name = self.params.get('vm_name')
         nic_id = self.params.get('nic_id')
         network = self.params.get('network')
         ip_address = self.params.get('ip_address')
@@ -208,8 +200,6 @@ class VappVMNIC(VcdAnsibleModule):
         response = defaultdict(dict)
         response['changed'] = False
         new_nic_id = None
-        note = 'added'
-        nic_found = False
 
         nics = self.get_vm_nics()
         nics_indexes = [int(nic.NetworkConnectionIndex) for nic in nics.NetworkConnection]
@@ -217,16 +207,8 @@ class VappVMNIC(VcdAnsibleModule):
 
         for nic in nics.NetworkConnection:
             if nic.NetworkConnectionIndex == nic_id:
-                nic_found = True
-                if op == "add":
-                    response['warnings'] = 'NIC is already present.'
-                    return response
-                else:
-                    note = 'updated'
-
-        if not nic_found and op == "update":
-            response['warnings'] = 'NIC not found.'
-            return response
+                response['warnings'] = 'NIC is already present.'
+                return response
 
         if nic_id is None:
             for index, nic_index in enumerate(nics_indexes):
@@ -236,65 +218,12 @@ class VappVMNIC(VcdAnsibleModule):
                     break
             nic_id = new_nic_id
 
-        if ip_allocation_mode in ('DHCP', 'POOL'):
-            nic = E.NetworkConnection(
-                E.NetworkConnectionIndex(nic_id),
-                E.IsConnected(True),
-                E.IpAddressAllocationMode(ip_allocation_mode),
-                network=network)
-        else:
-            if not ip_address:
-                raise Exception('IpAddress is missing.')
-            nic = E.NetworkConnection(
-                E.NetworkConnectionIndex(nic_id),
-                E.IpAddress(ip_address),
-                E.IsConnected(True),
-                E.IpAddressAllocationMode(ip_allocation_mode),
-                network=network)
-
-        nics.NetworkConnection.addnext(nic)
-        add_nic_task = self.client.put_resource(uri, nics, EntityType.NETWORK_CONNECTION_SECTION.value)
-        self.execute_task(add_nic_task)
-        response['msg'] = {
-            'vApp VM NIC:': note,
-            'nic_id': nic_id,
-            'ip_allocation_mode': ip_allocation_mode,
-            'ip_address': ip_address,
-            'network': network
-        }
-        response['changed'] = True
-
-        return response
-
-    def add_nic(self):
-        '''
-            Error - More than 10 Nics are not permissible in vCD
-        '''
-        vm = self.get_vm()
-        vm_name = self.params.get('vm_name')
-        network = self.params.get('network')
-        ip_address = self.params.get('ip_address')
-        ip_allocation_mode = self.params.get('ip_allocation_mode')
-        uri = vm.resource.get('href') + '/networkConnectionSection'
-        response = defaultdict(dict)
-        response['changed'] = False
-        new_nic_id = None
-
-        nics = self.get_vm_nics()
-        nics_indexes = [int(nic.NetworkConnectionIndex) for nic in nics.NetworkConnection]
-        nics_indexes.sort()
-        for index, nic_index in enumerate(nics_indexes):
-            new_nic_id = nic_index + 1
-            if index != nic_index:
-                new_nic_id = index
-                break
-
         if ip_allocation_mode not in ('DHCP', 'POOL', 'MANUAL'):
             raise Exception('IpAllocationMode should be one of DHCP/POOL/MANUAL')
 
         if ip_allocation_mode in ('DHCP', 'POOL'):
             nic = E.NetworkConnection(
-                E.NetworkConnectionIndex(new_nic_id),
+                E.NetworkConnectionIndex(nic_id),
                 E.IsConnected(True),
                 E.IpAddressAllocationMode(ip_allocation_mode),
                 network=network)
@@ -302,7 +231,7 @@ class VappVMNIC(VcdAnsibleModule):
             if not ip_address:
                 raise Exception('IpAddress is missing.')
             nic = E.NetworkConnection(
-                E.NetworkConnectionIndex(new_nic_id),
+                E.NetworkConnectionIndex(nic_id),
                 E.IpAddress(ip_address),
                 E.IsConnected(True),
                 E.IpAddressAllocationMode(ip_allocation_mode),
@@ -312,9 +241,10 @@ class VappVMNIC(VcdAnsibleModule):
         add_nic_task = self.client.put_resource(uri, nics, EntityType.NETWORK_CONNECTION_SECTION.value)
         self.execute_task(add_nic_task)
         response['msg'] = {
-            'nic_id': new_nic_id, 
+            'nic_id': nic_id,
             'ip_allocation_mode': ip_allocation_mode,
-            'ip_address': ip_address
+            'ip_address': ip_address,
+            'network': network
         }
         response['changed'] = True
 
@@ -325,8 +255,7 @@ class VappVMNIC(VcdAnsibleModule):
             Following update scenarios are covered
             1. IP allocation mode change: DHCP, POOL, MANUAL
             2. Update IP address in MANUAL mode
-            
-            If network change is needed, add_update_nic is used
+            3. Network change
         '''
         vm = self.get_vm()
         nic_id = self.params.get('nic_id')
@@ -345,7 +274,7 @@ class VappVMNIC(VcdAnsibleModule):
         nic_to_update = nic_indexs.index(nic_id)
 
         if network:
-            nics.NetworkConnection[nic_to_update].network = network
+            nics.NetworkConnection[nic_to_update].set('network', network)
             response['changed'] = True
 
         if ip_allocation_mode:
@@ -354,7 +283,16 @@ class VappVMNIC(VcdAnsibleModule):
             response['changed'] = True
 
         if ip_address:
-            nics.NetworkConnection[nic_to_update].IpAddress = E.IpAddress(ip_address)
+            if hasattr(nics.NetworkConnection[nic_to_update], 'IpAddress'):
+                nics.NetworkConnection[nic_to_update].IpAddress = E.IpAddress(ip_address)
+            else:
+                network = nics.NetworkConnection[nic_to_update].get('network')
+                nics.NetworkConnection[nic_to_update] = E.NetworkConnection(
+                    E.NetworkConnectionIndex(nic_id),
+                    E.IpAddress(ip_address),
+                    E.IsConnected(True),
+                    E.IpAddressAllocationMode(ip_allocation_mode),
+                    network=network)
             response['changed'] = True
 
         if response['changed']:
@@ -373,6 +311,7 @@ class VappVMNIC(VcdAnsibleModule):
         for nic in nics.NetworkConnection:
             meta = defaultdict(dict)
             nic_id = str(nic.NetworkConnectionIndex)
+            meta['Network'] = str(nic.get('network'))
             meta['MACAddress'] = str(nic.MACAddress)
             meta['IsConnected'] = str(nic.IsConnected)
             meta['NetworkAdapterType'] = str(nic.NetworkAdapterType)
