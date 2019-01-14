@@ -303,7 +303,6 @@ class VappVMNIC(VcdAnsibleModule):
         return response
 
     def read_nics(self):
-        vm = self.get_vm()
         response = defaultdict(dict)
         response['changed'] = False
 
