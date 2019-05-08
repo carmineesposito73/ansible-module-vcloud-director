@@ -283,6 +283,7 @@ class VappVMNIC(VcdAnsibleModule):
             response['changed'] = True
 
         if ip_address:
+            response['changed'] = True
             if hasattr(nics.NetworkConnection[nic_to_update], 'IpAddress'):
                 nics.NetworkConnection[nic_to_update].IpAddress = E.IpAddress(ip_address)
             else:
@@ -293,7 +294,6 @@ class VappVMNIC(VcdAnsibleModule):
                     E.IsConnected(True),
                     E.IpAddressAllocationMode(ip_allocation_mode),
                     network=network)
-            response['changed'] = True
 
         if response['changed']:
             update_nic_task = self.client.put_resource(uri, nics, EntityType.NETWORK_CONNECTION_SECTION.value)
