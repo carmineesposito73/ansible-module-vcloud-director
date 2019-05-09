@@ -60,17 +60,7 @@ options:
         type: str
     gateway_name:
         description:
-            - The name of the new gateway.
-        type: str
-        required: true
-    gateway_ip:
-        description:
-            - The IP for the new network required with Isolated network type.
-        type: str
-    netmask:
-        description:
-            - The netmask for the new network required with Isolated network
-              type.
+            - The name of the new gateway, required for Routed network type
         type: str
     parent_network_name:
         description:
@@ -110,7 +100,7 @@ options:
 
 
 EXAMPLES = '''
-- name: create vdc network | Direct
+- name: create vdc network | DIRECT
   create_vdc_network:
     user: "{{vcd_user}}"
     password: "{{vcd_password}}"
@@ -120,7 +110,6 @@ EXAMPLES = '''
     org: "{{system_org}}"
     org_name: "{{customer_org}}"
     vdc_name: "{{vdc_name}}"
-    gateway_name: "{{gateway_name}}"
     network_name: "my direct network"
     description: "directly connected network"
     parent_network_name: "CLOUDLAB EXTERNAL NETWORK"
@@ -140,8 +129,7 @@ EXAMPLES = '''
     network_name: "my ROUTED network"
     description: "ROUTED network"
     parent_network_name: "CLOUDLAB EXTERNAL NETWORK"
-    gateway_ip: "10.10.99.1"
-    netmask: "255.255.255.0"
+    network_cidr: 10.10.99.1/24
     primary_dns_ip: 1.1.1.1
     secondary_dns_ip: 2.2.2.2
     dns_suffix: routed.com
@@ -199,7 +187,7 @@ VAPP_NETWORK_STATES = ['present', 'absent']
 def vdc_gw_argument_spec():
     return dict(org_name=dict(type='str', required=True),
                 vdc_name=dict(type='str', required=True),
-                gateway_name=dict(type='str', required=True),
+                gateway_name=dict(type='str', required=False),
                 network_name=dict(type='str', required=True),
                 description=dict(type='str', required=False),
                 parent_network_name=dict(type='str', required=False),
@@ -320,8 +308,7 @@ class VdcNet(VcdAnsibleModule):
         except EntityNotFoundException:
             create = self.vdc.create_isolated_vdc_network(
                 self.network_name,
-                self.gateway_ip,
-                self.netmask,
+                self.network_cidr,
                 description=self.description,
                 primary_dns_ip=self.primary_dns_ip,
                 secondary_dns_ip=self.secondary_dns_ip,
