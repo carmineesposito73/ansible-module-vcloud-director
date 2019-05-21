@@ -67,17 +67,21 @@ options:
             - IP scope for 'isolated' and 'natRouted' networks,
               if fence_mode is 'natRouted', parent_network is required
         required: false
-    pool_start_ip:
+    ip_range_start:
         description:
             - first ip of pool range
         required: false
-    pool_end_ip:
+    ip_range_end:
         description:
-            - last ip of pool range, set to pool_start_ip if omitted
+            - last ip of pool range, set to ip_range_start if omitted
         required: false
     dns1, dns2:
         description:
             - DNS1 and DNS2 of network
+        required: false
+    dns_suffix:
+        description:
+            - dns suffix of network
         required: false
     nat_state, fw_state:
         description:
@@ -107,6 +111,7 @@ EXAMPLES = '''
     fence_mode: "natRouted"
     nat_state: "disabled"
     dns1: "8.8.8.8"
+    dns_suffix: "test.net"
     state = "present"
 '''
 
@@ -141,12 +146,13 @@ def vapp_network_argument_spec():
         fence_mode=dict(type='str', required=False, default=FenceMode.BRIDGED.value),
         parent_network=dict(type='str', required=False, default=None),
         ip_scope=dict(type='str', required=False, default=None),
-        pool_start_ip=dict(type='str', required=False, default=None),
-        pool_end_ip=dict(type='str', required=False, default=None),
+        ip_range_start=dict(type='str', required=False, default=None),
+        ip_range_end=dict(type='str', required=False, default=None),
         nat_state=dict(type='str', required=False, default='enabled'),
         fw_state=dict(type='str', required=False, default='enabled'),
         dns1=dict(type='str', required=False, default=''),
         dns2=dict(type='str', required=False, default=''),
+        dns_suffix=dict(type='str', required=False, default=''),
         state=dict(choices=VAPP_NETWORK_STATES, required=True),
     )
 
@@ -212,10 +218,11 @@ class VappNetwork(VcdAnsibleModule):
         fence_mode = self.params.get('fence_mode')
         parent_network = self.params.get('parent_network')
         ip_scope = self.params.get('ip_scope')
-        pool_start_ip = self.params.get('pool_start_ip')
-        pool_end_ip = self.params.get('pool_end_ip')
+        ip_range_start = self.params.get('ip_range_start')
+        ip_range_end = self.params.get('ip_range_end')
         dns1 = self.params.get('dns1')
         dns2 = self.params.get('dns2')
+        dns_suffix = self.params.get('dns_suffix')
         nat_state = self.params.get('nat_state')
         fw_state = self.params.get('fw_state')
 
@@ -241,12 +248,12 @@ class VappNetwork(VcdAnsibleModule):
                             E.Netmask(str(ip_network(ip_scope, strict=False).netmask)),
                             E.Dns1(dns1),
                             E.Dns2(dns2))
-                        if pool_start_ip:
-                            if not pool_end_ip:
-                                pool_end_ip = pool_start_ip
+                        if ip_range_start:
+                            if not ip_range_end:
+                                ip_range_end = ip_range_start
                             ip_range = E.IpRange(
-                                E.StartAddress(pool_start_ip),
-                                E.EndAddress(pool_end_ip))
+                                E.StartAddress(ip_range_start),
+                                E.EndAddress(ip_range_end))
                             scope.append(E.IpRanges(ip_range))
                         config.append(E.IpScopes(scope))
                     config.append(E.ParentNetwork(href=parent.get('href')))
@@ -258,13 +265,14 @@ class VappNetwork(VcdAnsibleModule):
                     E.Gateway(str(ip_network(ip_scope, strict=False).network_address+1)),
                     E.Netmask(str(ip_network(ip_scope, strict=False).netmask)),
                     E.Dns1(dns1),
-                    E.Dns2(dns2))
-                if pool_start_ip:
-                    if not pool_end_ip:
-                        pool_end_ip = pool_start_ip
+                    E.Dns2(dns2),
+                    E.DnsSuffix(dns_suffix))
+                if ip_range_start:
+                    if not ip_range_end:
+                        ip_range_end = ip_range_start
                     ip_range = E.IpRange(
-                        E.StartAddress(pool_start_ip),
-                        E.EndAddress(pool_end_ip))
+                        E.StartAddress(ip_range_start),
+                        E.EndAddress(ip_range_end))
                     scope.append(E.IpRanges(ip_range))
                 config.append(E.IpScopes(scope))
             else:
