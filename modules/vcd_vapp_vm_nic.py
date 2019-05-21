@@ -50,6 +50,10 @@ options:
         description:
             - List of NIC IDs (required for state absent)
         required: false
+    adapter_type:
+        description:
+            - Adapter type (VMXNET3, E1000E, ...)
+        required: false
     network:
         description:
             - vApp network name
@@ -140,6 +144,7 @@ def vapp_vm_nic_argument_spec():
         ip_allocation_mode=dict(type='str', required=False),
         ip_address=dict(type='str', required=False),
         network=dict(type='str', required=False),
+        adapter_type=dict(type='str', required=False),
         state=dict(choices=VAPP_VM_NIC_STATES, required=False),
         operation=dict(choices=VAPP_VM_NIC_OPERATIONS, required=False),
     )
@@ -192,10 +197,12 @@ class VappVMNIC(VcdAnsibleModule):
             Error - More than 10 Nics are not permissible in vCD
         '''
         vm = self.get_vm()
+        vm_name = self.params.get('vm_name')
         nic_id = self.params.get('nic_id')
         network = self.params.get('network')
         ip_address = self.params.get('ip_address')
         ip_allocation_mode = self.params.get('ip_allocation_mode')
+        adapter_type = self.params.get('adapter_type')
         uri = vm.resource.get('href') + '/networkConnectionSection'
         response = defaultdict(dict)
         response['changed'] = False
@@ -207,8 +214,13 @@ class VappVMNIC(VcdAnsibleModule):
 
         for nic in nics.NetworkConnection:
             if nic.NetworkConnectionIndex == nic_id:
-                response['warnings'] = 'NIC is already present.'
+                response['warnings'] = 'NIC {} is already present on VM {}'.format(
+                    nic_id, vm_name)
                 return response
+
+        if adapter_type is None:
+            nics_adapters = [str(nic.NetworkAdapterType) for nic in nics.NetworkConnection]
+            adapter_type = nics_adapters[0] # select the first nic NetworkAdapterType
 
         if nic_id is None:
             for index, nic_index in enumerate(nics_indexes):
@@ -226,6 +238,7 @@ class VappVMNIC(VcdAnsibleModule):
                 E.NetworkConnectionIndex(nic_id),
                 E.IsConnected(True),
                 E.IpAddressAllocationMode(ip_allocation_mode),
+                E.NetworkAdapterType(adapter_type),
                 network=network)
         else:
             if not ip_address:
@@ -235,6 +248,7 @@ class VappVMNIC(VcdAnsibleModule):
                 E.IpAddress(ip_address),
                 E.IsConnected(True),
                 E.IpAddressAllocationMode(ip_allocation_mode),
+                E.NetworkAdapterType(adapter_type),
                 network=network)
 
         nics.NetworkConnection.addnext(nic)
@@ -242,6 +256,7 @@ class VappVMNIC(VcdAnsibleModule):
         self.execute_task(add_nic_task)
         response['msg'] = {
             'nic_id': nic_id,
+            'adapter_type': adapter_type,
             'ip_allocation_mode': ip_allocation_mode,
             'ip_address': ip_address,
             'network': network
