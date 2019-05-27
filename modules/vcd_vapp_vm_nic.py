@@ -218,11 +218,11 @@ class VappVMNIC(VcdAnsibleModule):
                     nic_id, vm_name)
                 return response
 
-        if adapter_type is None:
+        if not adapter_type:
             nics_adapters = [str(nic.NetworkAdapterType) for nic in nics.NetworkConnection]
             adapter_type = nics_adapters[0] # select the first nic NetworkAdapterType
 
-        if nic_id is None:
+        if nic_id is None or nic_id < 0:
             for index, nic_index in enumerate(nics_indexes):
                 new_nic_id = nic_index + 1
                 if index != nic_index:
